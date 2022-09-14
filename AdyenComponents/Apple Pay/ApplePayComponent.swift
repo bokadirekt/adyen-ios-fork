@@ -28,8 +28,6 @@ public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent
     /// The Apple Pay payment method.
     public var paymentMethod: PaymentMethod { applePayPaymentMethod }
 
-    internal let configuration: Configuration
-
     internal var paymentAuthorizationViewController: PKPaymentAuthorizationViewController?
 
     /// The delegate of the component.
@@ -37,6 +35,40 @@ public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent
 
     /// The delegate changes of ApplePay payment state.
     public weak var applePayDelegate: ApplePayComponentDelegate?
+
+    /// Initializes the component.
+    /// - Warning: Do not dismiss this component.
+    ///  First, call `didFinalize(with:completion:)` on error or success, then dismiss it.
+    ///  Dismissal should occur within `completion` block.
+    ///
+    /// - Parameter paymentMethod: The Apple Pay payment method. Must include country code.
+    /// - Parameter context: The context object for this component.
+    /// - Parameter paymentRequest: The payment request
+    /// - Throws: `ApplePayComponent.Error.userCannotMakePayment`.
+    /// if user can't make payments on any of the payment request’s supported networks.
+    /// - Throws: `ApplePayComponent.Error.deviceDoesNotSupportApplyPay` if the current device's hardware doesn't support ApplePay.
+    /// - Throws: `ApplePayComponent.Error.userCannotMakePayment` if user can't make payments on any of the supported networks.
+    public init(paymentMethod: ApplePayPaymentMethod,
+                context: AdyenContext,
+                paymentRequest: PKPaymentRequest) throws {
+        guard PKPaymentAuthorizationViewController.canMakePayments() else {
+            throw Error.deviceDoesNotSupportApplyPay
+        }
+        self.paymentRequest = paymentRequest
+        self.applePayPayment = try paymentRequest.getApplePayment()
+        guard let viewController = PKPaymentAuthorizationViewController(paymentRequest: paymentRequest) else {
+            throw UnknownError(
+                errorDescription: "Failed to instantiate PKPaymentAuthorizationViewController because of unknown error"
+            )
+        }
+
+        self.context = context
+        self.paymentAuthorizationViewController = viewController
+        self.applePayPaymentMethod = paymentMethod
+        super.init()
+
+        viewController.delegate = self
+    }
     
     /// Initializes the component.
     /// - Warning: Do not dismiss this component.
@@ -68,7 +100,6 @@ public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent
             )
         }
 
-        self.configuration = configuration
         self.context = context
         self.paymentAuthorizationViewController = viewController
         self.applePayPaymentMethod = paymentMethod
@@ -137,5 +168,13 @@ extension ApplePayComponent: ViewControllerDelegate {
 
     public func viewWillAppear(viewController: UIViewController) {
         sendTelemetryEvent()
+    }
+}
+
+extension PKPaymentRequest {
+    func getApplePayment() throws -> ApplePayPayment {
+        try ApplePayPayment(countryCode: countryCode,
+                            currencyCode: currencyCode,
+                            summaryItems: paymentSummaryItems)
     }
 }
