@@ -105,7 +105,7 @@ extension PreApplePayComponent: PreApplePayViewDelegate {
     
     internal func pay() {
         isPresenting = true
-        presentationDelegate?.present(component: applePayComponent)
+        applePayComponent.initiatePayment()
     }
     
 }

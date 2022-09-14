@@ -9,23 +9,26 @@ import Foundation
 import PassKit
 
 @_spi(AdyenInternal)
-extension ApplePayComponent: PKPaymentAuthorizationViewControllerDelegate {
-    
-    public func paymentAuthorizationViewControllerDidFinish(_ controller: PKPaymentAuthorizationViewController) {
-        paymentAuthorizationViewController = nil
-        if case let State.finalized(completion) = state {
+extension ApplePayComponent: PKPaymentAuthorizationControllerDelegate {
+
+    public func paymentAuthorizationControllerDidFinish(_ controller: PKPaymentAuthorizationController) {
+        switch state {
+        case let .finalized(completion):
             completion?()
-        } else {
+        default:
             delegate?.didFail(with: ComponentError.cancelled, from: self)
         }
     }
     
-    public func paymentAuthorizationViewController(_ controller: PKPaymentAuthorizationViewController,
-                                                   didAuthorizePayment payment: PKPayment,
-                                                   completion: @escaping (PKPaymentAuthorizationStatus) -> Void) {
+    public func paymentAuthorizationController(_ controller: PKPaymentAuthorizationController,
+                                               didAuthorizePayment payment: PKPayment,
+                                               handler completion: @escaping (PKPaymentAuthorizationResult) -> Void) {
         guard payment.token.paymentData.isEmpty == false else {
-            completion(.failure)
-            delegate?.didFail(with: Error.invalidToken, from: self)
+            completion(PKPaymentAuthorizationResult(status: .failure, errors: [Error.invalidToken]))
+            state = .finalized { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.didFail(with: Error.invalidToken, from: self)
+            }
             return
         }
 
@@ -41,8 +44,8 @@ extension ApplePayComponent: PKPaymentAuthorizationViewControllerDelegate {
         submit(data: PaymentComponentData(paymentMethodDetails: details, amount: applePayPayment.amount, order: order))
     }
 
-    public func paymentAuthorizationViewController(
-        _ controller: PKPaymentAuthorizationViewController,
+    public func paymentAuthorizationController(
+        _ controller: PKPaymentAuthorizationController,
         didSelectShippingContact contact: PKContact,
         handler completion: @escaping (PKPaymentRequestShippingContactUpdate) -> Void
     ) {
@@ -58,9 +61,9 @@ extension ApplePayComponent: PKPaymentAuthorizationViewControllerDelegate {
         }
     }
 
-    public func paymentAuthorizationViewController(_ controller: PKPaymentAuthorizationViewController,
-                                                   didSelect shippingMethod: PKShippingMethod,
-                                                   handler completion: @escaping (PKPaymentRequestShippingMethodUpdate) -> Void) {
+    public func paymentAuthorizationController(_ controller: PKPaymentAuthorizationController,
+                                               didSelectShippingMethod shippingMethod: PKShippingMethod,
+                                               handler completion: @escaping (PKPaymentRequestShippingMethodUpdate) -> Void) {
         guard let applePayDelegate = applePayDelegate else {
             return completion(.init(paymentSummaryItems: applePayPayment.summaryItems))
         }
@@ -74,9 +77,9 @@ extension ApplePayComponent: PKPaymentAuthorizationViewControllerDelegate {
     }
 
     @available(iOS 15.0, *)
-    public func paymentAuthorizationViewController(_ controller: PKPaymentAuthorizationViewController,
-                                                   didChangeCouponCode couponCode: String,
-                                                   handler completion: @escaping (PKPaymentRequestCouponCodeUpdate) -> Void) {
+    public func paymentAuthorizationController(_ controller: PKPaymentAuthorizationController,
+                                               didChangeCouponCode couponCode: String,
+                                               handler completion: @escaping (PKPaymentRequestCouponCodeUpdate) -> Void) {
         guard let applePayDelegate = applePayDelegate else {
             return completion(.init(paymentSummaryItems: applePayPayment.summaryItems))
         }

@@ -9,9 +9,7 @@ import Foundation
 import PassKit
 
 /// A component that handles Apple Pay payments.
-public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent, FinalizableComponent {
-
-    private let paymentRequest: PKPaymentRequest
+public class ApplePayComponent: NSObject, InstantPaymentComponentProtocol, FinalizableComponent {
 
     internal var applePayPayment: ApplePayPayment
 
@@ -21,14 +19,14 @@ public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent
 
     internal let applePayPaymentMethod: ApplePayPaymentMethod
 
+    internal let paymentController: PKPaymentAuthorizationController
+
     /// The context object for this component.
     @_spi(AdyenInternal)
     public let context: AdyenContext
 
     /// The Apple Pay payment method.
     public var paymentMethod: PaymentMethod { applePayPaymentMethod }
-
-    internal var paymentAuthorizationViewController: PKPaymentAuthorizationViewController?
 
     /// The delegate of the component.
     public weak var delegate: PaymentComponentDelegate?
@@ -51,23 +49,18 @@ public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent
     public init(paymentMethod: ApplePayPaymentMethod,
                 context: AdyenContext,
                 paymentRequest: PKPaymentRequest) throws {
-        guard PKPaymentAuthorizationViewController.canMakePayments() else {
-            throw Error.deviceDoesNotSupportApplyPay
-        }
-        self.paymentRequest = paymentRequest
-        self.applePayPayment = try paymentRequest.getApplePayment()
-        guard let viewController = PKPaymentAuthorizationViewController(paymentRequest: paymentRequest) else {
-            throw UnknownError(
-                errorDescription: "Failed to instantiate PKPaymentAuthorizationViewController because of unknown error"
-            )
+        guard Self.canMakePaymentWith(paymentRequest) else {
+            throw Error.userCannotMakePayment
         }
 
+        self.applePayPayment = try paymentRequest.getApplePayment()
         self.context = context
-        self.paymentAuthorizationViewController = viewController
+        self.paymentController = PKPaymentAuthorizationController(paymentRequest: paymentRequest)
         self.applePayPaymentMethod = paymentMethod
         super.init()
 
-        viewController.delegate = self
+        paymentController.delegate = self
+        state = .initial
     }
     
     /// Initializes the component.
@@ -93,33 +86,34 @@ public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent
             throw Error.userCannotMakePayment
         }
 
-        self.paymentRequest = configuration.createPaymentRequest(supportedNetworks: supportedNetworks)
-        guard let viewController = PKPaymentAuthorizationViewController(paymentRequest: paymentRequest) else {
-            throw UnknownError(
-                errorDescription: "Failed to instantiate PKPaymentAuthorizationViewController because of unknown error"
-            )
-        }
-
+        let paymentRequest = configuration.createPaymentRequest(supportedNetworks: supportedNetworks)
+        self.paymentController = PKPaymentAuthorizationController(paymentRequest: paymentRequest)
         self.context = context
-        self.paymentAuthorizationViewController = viewController
         self.applePayPaymentMethod = paymentMethod
         self.applePayPayment = configuration.applePayPayment
         super.init()
 
-        viewController.delegate = self
+        paymentController.delegate = self
+        state = .initial
     }
 
-    public var viewController: UIViewController {
-        createPaymentAuthorizationViewController()
+    public func initiatePayment() {
+        paymentController.present { result in
+            guard !result else { return }
+            print("Failed to instantiate PKPaymentAuthorizationController because of unknown error")
+        }
     }
 
     public func didFinalize(with success: Bool, completion: (() -> Void)?) {
         if case let .paid(paymentAuthorizationCompletion) = state {
             state = .finalized(completion)
-            paymentAuthorizationCompletion(success ? .success : .failure)
+            let status: PKPaymentAuthorizationStatus = success ? .success : .failure
+            paymentAuthorizationCompletion(PKPaymentAuthorizationResult(status: status, errors: nil))
         } else {
+            paymentController.dismiss {
+                DispatchQueue.main.async { completion?() }
+            }
             state = .initial
-            completion?()
         }
     }
 
@@ -133,17 +127,13 @@ public class ApplePayComponent: NSObject, PresentableComponent, PaymentComponent
 
     // MARK: - Private
 
-    private func createPaymentAuthorizationViewController() -> PKPaymentAuthorizationViewController {
-        if paymentAuthorizationViewController == nil {
-            paymentAuthorizationViewController = PKPaymentAuthorizationViewController(paymentRequest: paymentRequest)
-            paymentAuthorizationViewController?.delegate = self
-            state = .initial
-        }
-        return paymentAuthorizationViewController!
-    }
-
     private static func canMakePaymentWith(_ networks: [PKPaymentNetwork]) -> Bool {
         PKPaymentAuthorizationViewController.canMakePayments(usingNetworks: networks)
+    }
+
+    private static func canMakePaymentWith(_ paymentRequest: PKPaymentRequest) -> Bool {
+        PKPaymentAuthorizationViewController.canMakePayments(usingNetworks: paymentRequest.supportedNetworks,
+                                                             capabilities: paymentRequest.merchantCapabilities)
     }
 }
 
@@ -151,7 +141,7 @@ extension ApplePayComponent {
 
     internal enum State {
         case initial
-        case paid((PKPaymentAuthorizationStatus) -> Void)
+        case paid((PKPaymentAuthorizationResult) -> Void)
         case finalized((() -> Void)?)
     }
 

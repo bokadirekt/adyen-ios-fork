@@ -27,7 +27,7 @@ internal protocol Presenter: AnyObject {
 internal final class IntegrationExample: APIClientAware {
 
     internal var paymentMethods: PaymentMethods?
-    internal var currentComponent: PresentableComponent?
+    internal var currentComponent: Component?
     internal var sessionPaymentMethods: PaymentMethods?
 
     internal weak var presenter: Presenter?

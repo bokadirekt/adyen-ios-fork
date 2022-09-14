@@ -107,12 +107,16 @@ extension IntegrationExample {
 
     internal func presentApplePayComponent() {
         guard let component = applePayComponent(from: paymentMethods) else { return }
-        present(component, delegate: self)
+        component.delegate = self
+        currentComponent = component
+        component.initiatePayment()
     }
     
     internal func presentApplePayComponentSession() {
         guard let component = applePayComponent(from: sessionPaymentMethods) else { return }
-        present(component, delegate: session)
+        component.delegate = session
+        currentComponent = component
+        component.initiatePayment()
     }
     
     internal func applePayComponent(from paymentMethods: PaymentMethods?) -> ApplePayComponent? {

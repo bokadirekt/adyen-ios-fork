@@ -6,8 +6,12 @@
 
 import Foundation
 
+public protocol InstantPaymentComponentProtocol: PaymentComponent {
+    func initiatePayment()
+}
+
 /// A component that handles payment methods that don't need any payment detail to be filled.
-public final class InstantPaymentComponent: PaymentComponent {
+public final class InstantPaymentComponent: InstantPaymentComponentProtocol {
 
     /// The context object for this component.
     @_spi(AdyenInternal)
