@@ -3,27 +3,66 @@ name: Test Swift Package Manager Integration
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-
   push:
     branches:
     - master
     - develop
+    - improve-ci
+
+env:
+  PROJECT_NAME: TempProject
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-
-  SPM:
+  SPM-archive:
     runs-on: macos-12
     steps:
     - uses: actions/checkout@v2
     - uses: n1hility/cancel-previous-runs@v2
       with:
         token: ${{ secrets.MANUAL_ACTION_TOKEN }}
-
-    - name: Select latest Xcode
-      uses: maxim-lobanov/setup-xcode@v1
+    - uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: latest-stable
 
-    - name: Test Swift Package Manager Integration
+    - name: Setup test fixture
       run: |
-        Scripts/test-SPM-integration.sh
+        Scripts/generate_swift_project.sh spm -w -p $PROJECT_NAME
+
+    - name: Build and Archive for generic iOS device
+      working-directory: ${{ env.PROJECT_NAME }}
+      run: |
+        xcodebuild clean build archive -scheme $PROJECT_NAME -destination 'generic/platform=iOS' | xcpretty --utf --color
+
+    - name: Build and Archive for x86_64 simulator
+      working-directory: ${{ env.PROJECT_NAME }}
+      run: |
+        xcodebuild clean build archive -scheme $PROJECT_NAME -destination 'generic/platform=iOS Simulator' | xcpretty --utf --color
+
+
+  SPM-test:
+    runs-on: macos-12
+    steps:
+    - uses: actions/checkout@v2
+    - uses: n1hility/cancel-previous-runs@v2
+      with:
+        token: ${{ secrets.MANUAL_ACTION_TOKEN }}
+    - uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Setup test fixture
+      run: |
+        brew update
+        brew install xcodegen
+        Scripts/generate_xcodegen_project.sh spm -w -p $PROJECT_NAME
+
+    - name: Build and Test
+      working-directory: ${{ env.PROJECT_NAME }}
+      env:
+        APP_NAME: ${{ env.PROJECT_NAME }}_App
+      run: |
+        xcodebuild clean build test -scheme $APP_NAME -destination 'name=iPhone 13' | xcpretty --utf --color

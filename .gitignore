@@ -36,6 +36,7 @@ Internal/
 #Swift Package Manager
 .swiftpm
 Package.resolved
+.build
 
 # CI temp files
 TempProject/

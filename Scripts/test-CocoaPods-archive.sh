@@ -9,7 +9,7 @@ function print_help {
   echo "test-CocoaPods-integration [-w]"
   echo " "
   echo "options:"
-  echo "-w, --exclude-wechat      exclude wechat module"
+  echo "-w, --include-wechat      include wechat module"
   echo "-t, --team                set DEVELOPMENT_TEAM to all bundle modules"
 }
 
@@ -79,12 +79,8 @@ let package = Package(
         .target(
             name: \"TempProject\",
             dependencies: []),
-        .testTarget(
-            name: \"TempProjectTests\",
-            dependencies: [\"TempProject\"]),
     ]
 )
-
 " > Package.swift
 
 swift package update
